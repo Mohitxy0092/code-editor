@@ -49,7 +49,7 @@ export function Header() {
                   {/* Desktop Navigation Links */}
                   <div className="hidden sm:flex items-center gap-4">
                     <Link
-                      href="/docs/components/background-paths"
+                      href="https://devdocs.io/"
                       className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors"
                     >
                       Docs
@@ -61,7 +61,7 @@ export function Header() {
                                             Pricing
                                         </Link> */}
                     <Link
-                      href="https://codesnippetui.pro/templates?utm_source=codesnippetui.com&utm_medium=header"
+                      href="#"
                       target="_blank"
                       className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors flex items-center gap-2"
                     >
