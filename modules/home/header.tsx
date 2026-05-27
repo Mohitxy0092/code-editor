@@ -61,7 +61,7 @@ export function Header() {
                                             Pricing
                                         </Link> */}
                     <Link
-                      href="#"
+                      href="https://api-docs.deepseek.com/"
                       target="_blank"
                       className="text-sm text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 transition-colors flex items-center gap-2"
                     >

@@ -1,119 +1,175 @@
-import { db } from "@/lib/db";
-import { error } from "console";
 import { NextRequest, NextResponse } from "next/server";
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
 interface ChatRequest {
   message: string;
-  history: ChatMessage[];
+  history?: ChatMessage[];
 }
 
+const OLLAMA_URL = "http://127.0.0.1:11434/api/generate";
+
 async function generateAIResponse(messages: ChatMessage[]): Promise<string> {
-  const systemPrompt = `You are a helpful AI coding assistant. You help developers with:
-- Code explanations and debugging
-- Best practices and architecture advice  
-- Writing clean, efficient code
-- Troubleshooting errors
-- Code reviews and optimizations
+  const systemPrompt = `
+You are a professional AI coding assistant.
 
-Always provide clear, practical answers. Use proper code formatting when showing examples.`;
+You help developers with:
+- Debugging
+- Code explanations
+- Refactoring
+- Architecture advice
+- Best practices
+- Performance optimization
+- Error fixing
 
-  const fullMessages = [{ role: "system", content: systemPrompt }, ...messages];
+RULES:
+- Be concise but accurate
+- Use proper code formatting
+- Prefer modern best practices
+- Return practical solutions
+`;
+
+  const fullMessages: ChatMessage[] = [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    ...messages,
+  ];
 
   const prompt = fullMessages
     .map((msg) => `${msg.role}: ${msg.content}`)
     .join("\n\n");
 
+  const controller = new AbortController();
+
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, 60000);
+
   try {
-    const response = await fetch("http://localhost:11434/api/generate", {
+    const response = await fetch(OLLAMA_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
       body: JSON.stringify({
-        model: "codellama:latest",
-        prompt: prompt,
+        model: "deepseek-coder:1.3b",
+        prompt,
         stream: false,
         options: {
-          temperature: 0.7, // Controls randomness (0-1)
-          max_tokens: 1000, // Maximum response length
-          top_p: 0.9, // controls diversity
+          temperature: 0.7,
+          num_predict: 1000,
+          top_p: 0.9,
         },
       }),
     });
 
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      throw new Error(`Ollama API Error (${response.status}): ${errorText}`);
+    }
+
     const data = await response.json();
+
+    console.log("OLLAMA RESPONSE:", data);
 
     if (!data.response) {
       throw new Error("No response from AI model");
     }
 
-    return data.response.trim();
-  } catch (error) {
-    console.error("AI generation error:", error);
-    throw new Error("Failed to generate AI response");
+    return cleanAIResponse(data.response);
+  } catch (error: any) {
+    console.error("AI generation error:", error?.message || error);
+
+    throw new Error(error?.message || "Failed to generate AI response");
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+function cleanAIResponse(response: string): string {
+  if (!response) {
+    return "No response generated.";
+  }
+
+  return response.trim();
+}
+
+function validateHistory(history: unknown): ChatMessage[] {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history.filter(
+    (msg): msg is ChatMessage =>
+      !!msg &&
+      typeof msg === "object" &&
+      typeof msg.role === "string" &&
+      typeof msg.content === "string" &&
+      ["system", "user", "assistant"].includes(msg.role),
+  );
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body: ChatRequest = await req.json();
+
     const { message, history = [] } = body;
 
-    // Validate input
-    if (!message || typeof message !== "string") {
+    // Validate message
+    if (!message || typeof message !== "string" || !message.trim()) {
       return NextResponse.json(
-        { error: "Message is required and must be a string" },
-        { status: 400 }
+        {
+          success: false,
+          error: "Message is required",
+        },
+        {
+          status: 400,
+        },
       );
     }
 
-    // Validate history format
-    const validHistory = Array.isArray(history)
-      ? history.filter(
-          (msg) =>
-            msg &&
-            typeof msg === "object" &&
-            typeof msg.role === "string" &&
-            typeof msg.content === "string" &&
-            ["user", "assistant"].includes(msg.role)
-        )
-      : [];
+    // Validate history
+    const validHistory = validateHistory(history);
 
+    // Limit conversation memory
     const recentHistory = validHistory.slice(-10);
 
     const messages: ChatMessage[] = [
       ...recentHistory,
-      { role: "user", content: message },
+      {
+        role: "user",
+        content: message.trim(),
+      },
     ];
 
-    //   Generate ai response
-
+    // Generate AI response
     const aiResponse = await generateAIResponse(messages);
 
-
-
     return NextResponse.json({
+      success: true,
       response: aiResponse,
       timestamp: new Date().toISOString(),
     });
-  } catch (error) {
-    console.error("Chat API Error:", error);
-
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
+  } catch (error: any) {
+    console.error("Chat API Error:", error?.message || error);
 
     return NextResponse.json(
       {
+        success: false,
         error: "Failed to generate AI response",
-        details: errorMessage,
+        details: error?.message || "Unknown internal server error",
         timestamp: new Date().toISOString(),
       },
-      { status: 500 }
+      {
+        status: 500,
+      },
     );
   }
 }
